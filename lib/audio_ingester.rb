@@ -2,9 +2,11 @@ require 'pathname'
 require 'fileutils'
 require 'nokogiri'
 require 'time'
+require 'wavefile'
 
 class DirectoryNotFoundError < StandardError; end
 class NoWavFilesFoundError < StandardError; end
+class MetadataExtractionError < StandardError; end
 class FileCreationError < StandardError; end
 
 class AudioIngester
@@ -46,32 +48,25 @@ class AudioIngester
   end
 
   def extract_metadata(file_path)
-    #  open the file in binary mode
-    wav_file = File.open(file_path, 'rb')
-
-    # metadata can be found in the first 44 bytes of the file
-    header = wav_file.read(44)
-    # `unpack` converts binary data to readable format
-    # the argument specifies the format of the binary data
-    # S is for short (16-bit) and L is for long (32-bit), < is for little-endian
-    audio_format = header[20..21].unpack('S<').first == 1 ? 'PCM' : 'Compressed'
-    num_channels = header[22..23].unpack('S<').first
-    sample_rate = header[24..27].unpack('L<').first
-    byte_rate = header[28..31].unpack('L<').first
-    bits_per_sample = header[34..35].unpack('S<').first
-    bit_rate = sample_rate * num_channels * bits_per_sample
-
-    {
-      audio_format:     audio_format,
-      num_channels:     num_channels,
-      sample_rate:      sample_rate,
-      byte_rate:        byte_rate,
-      bits_per_sample:  bits_per_sample,
-      bit_rate:         bit_rate
-    }
-
-  ensure
-    wav_file&.close
+    # Extract metadata using WaveFile gem
+    metadata = {}
+    begin
+      WaveFile::Reader.new(file_path) do |reader|
+        format = reader.native_format
+        metadata = {
+          audio_format: format.audio_format == 1 ? 'PCM' : 'Compressed',
+          num_channels: format.channels,
+          sample_rate: format.sample_rate,
+          byte_rate: format.byte_rate,
+          bits_per_sample: format.bits_per_sample,
+          bit_rate: format.sample_rate * format.channels * format.bits_per_sample,
+        }
+      end
+    rescue StandardError => e
+      raise MetadataExtractionError,
+        "Error extracting metadata from #{file_path}: #{e.message}"
+    end
+    metadata
   end
 
   def create_xml(file, metadata)

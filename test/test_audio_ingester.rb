@@ -7,10 +7,10 @@ class TestAudioIngester < Minitest::Test
     @input_dir = File.expand_path('input_files', __dir__)
   end
 
-  # def teardown
-  #   output_dir = File.join(File.dirname(@input_dir), 'output')
-  #   FileUtils.remove_entry_secure(output_dir) if Dir.exist?(output_dir)
-  # end
+  def teardown
+    output_dir = File.join(File.dirname(@input_dir), 'output')
+    FileUtils.remove_entry_secure(output_dir) if Dir.exist?(output_dir)
+  end
 
   def test_directory_not_found
     ingester = AudioIngester.new('/non/existent/directory')
