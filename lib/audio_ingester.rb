@@ -5,6 +5,7 @@ require 'time'
 
 class DirectoryNotFoundError < StandardError; end
 class NoWavFilesFoundError < StandardError; end
+class FileCreationError < StandardError; end
 
 class AudioIngester
   attr_reader :input_dir, :output_dir
@@ -34,24 +35,63 @@ class AudioIngester
   end
 
   def create_output_directory
-    output_base = File.join(File.dirname(@input_dir), "output")
+    output_base = File.join(File.dirname(@input_dir), 'output')
     @output_dir = File.join(output_base, Time.now.to_i.to_s)
     FileUtils.mkdir_p(@output_dir)
   end
 
   def process_file(file)
-    puts "Extracting metadata from: #{file}"
-    create_empty_xml(file)
+    metadata = extract_metadata(file)
+    create_xml(file, metadata)
   end
 
-  def create_empty_xml(file)
-    file_name = File.basename(file, ".*") + ".xml"
-    output_path = File.join(@output_dir, file_name)
-    builder = Nokogiri::XML::Builder.new(encoding: 'UTF-8') do
-      # Future XML content can added here
+  def extract_metadata(file_path)
+    #  open the file in binary mode
+    wav_file = File.open(file_path, 'rb')
+
+    # metadata can be found in the first 44 bytes of the file
+    header = wav_file.read(44)
+    # `unpack` converts binary data to readable format
+    # the argument specifies the format of the binary data
+    # S is for short (16-bit) and L is for long (32-bit), < is for little-endian
+    audio_format = header[20..21].unpack('S<').first == 1 ? 'PCM' : 'Compressed'
+    num_channels = header[22..23].unpack('S<').first
+    sample_rate = header[24..27].unpack('L<').first
+    byte_rate = header[28..31].unpack('L<').first
+    bits_per_sample = header[34..35].unpack('S<').first
+    bit_rate = sample_rate * num_channels * bits_per_sample
+
+    {
+      audio_format:     audio_format,
+      num_channels:     num_channels,
+      sample_rate:      sample_rate,
+      byte_rate:        byte_rate,
+      bits_per_sample:  bits_per_sample,
+      bit_rate:         bit_rate
+    }
+
+  ensure
+    wav_file&.close
+  end
+
+  def create_xml(file, metadata)
+    begin
+      file_name = File.basename(file, '.*') + '.xml'
+      output_path = File.join(@output_dir, file_name)
+      builder = Nokogiri::XML::Builder.new(encoding: 'UTF-8') do |xml|
+        xml.track do
+          xml.format metadata[:audio_format]
+          xml.channel_count metadata[:num_channels]
+          xml.sampling_rate metadata[:sample_rate]
+          xml.bit_depth metadata[:bits_per_sample]
+          xml.byte_rate metadata[:byte_rate] if metadata[:byte_rate]
+          xml.bit_rate metadata[:bit_rate]
+        end
+      end
+      File.write(output_path, builder.to_xml)
+    rescue StandardError => e
+      raise FileCreationError, "Error creating XML file, #{file}: #{e.message}"
     end
-    File.write(output_path, builder.to_xml)
-    puts "Generated empty XML for: #{file_name}"
   end
 end
 
