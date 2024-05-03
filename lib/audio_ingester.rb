@@ -14,11 +14,13 @@ class AudioIngester
 
   def initialize(input_dir)
     @input_dir = input_dir
+    puts "Initialized AudioIngester with input directory: #{@input_dir}"
   end
 
-   def run
+  def run
     check_directory_existence
     wav_files = fetch_wav_files
+    puts "Found #{wav_files.length} WAV files"
     create_output_directory
     wav_files.each { |file| process_file(file) }
   end
@@ -27,24 +29,27 @@ class AudioIngester
   private
 
   def check_directory_existence
-    raise DirectoryNotFoundError unless Dir.exist?(@input_dir)
+    raise DirectoryNotFoundError unless Dir.exist?(input_dir)
   end
 
   def fetch_wav_files
-    wav_files = Dir.glob(File.join(@input_dir, '*.wav'))
+    wav_files = Dir.glob(File.join(input_dir, '*.wav'))
     raise NoWavFilesFoundError if wav_files.empty?
     wav_files
   end
 
   def create_output_directory
-    output_base = File.join(File.dirname(@input_dir), 'output')
+    output_base = File.join(File.dirname(input_dir), 'output')
     @output_dir = File.join(output_base, Time.now.to_i.to_s)
-    FileUtils.mkdir_p(@output_dir)
+    FileUtils.mkdir_p(output_dir)
+    puts "Output directory created at: #{output_dir}"
   end
 
   def process_file(file)
+    puts "Processing file: #{file}"
     metadata = extract_metadata(file)
     create_xml(file, metadata)
+    puts "XML created for: #{file}"
   end
 
   def extract_metadata(file_path)
@@ -72,7 +77,7 @@ class AudioIngester
   def create_xml(file, metadata)
     begin
       file_name = File.basename(file, '.*') + '.xml'
-      output_path = File.join(@output_dir, file_name)
+      output_path = File.join(output_dir, file_name)
       builder = Nokogiri::XML::Builder.new(encoding: 'UTF-8') do |xml|
         xml.track do
           xml.format metadata[:audio_format]
